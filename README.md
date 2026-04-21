@@ -2,6 +2,8 @@
 
 An [x402](https://x402.org)-gated MCP server that proxies Anthropic inference over Streamable HTTP. Pay in USDC on Base, get a Claude response.
 
+Live endpoint: `https://anthropic.yeetful.com/api/mcp/mcp`
+
 ## How it works
 
 1. Client calls `POST /api/mcp/mcp` with an MCP JSON-RPC request.
@@ -59,10 +61,12 @@ Three test suites:
 ### Manually validating the live 402
 
 ```bash
-curl -i -X POST http://localhost:3000/api/mcp/mcp \
+curl -i -X POST https://anthropic.yeetful.com/api/mcp/mcp \
   -H 'content-type: application/json' \
   -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}'
 ```
+
+(Swap the host for `http://localhost:3000` when running `npm run dev` locally.)
 
 You should see `HTTP/1.1 402 Payment Required` and a JSON body containing `accepts[].payTo` equal to the configured wallet.
 
@@ -75,7 +79,7 @@ import { privateKeyToAccount } from "viem/accounts";
 const account = privateKeyToAccount(process.env.PRIVATE_KEY as `0x${string}`);
 const fetchWithPayment = wrapFetchWithPayment(fetch, account);
 
-const res = await fetchWithPayment("http://localhost:3000/api/mcp/mcp", {
+const res = await fetchWithPayment("https://anthropic.yeetful.com/api/mcp/mcp", {
   method: "POST",
   headers: { "content-type": "application/json" },
   body: JSON.stringify({
