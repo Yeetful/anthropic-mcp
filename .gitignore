@@ -9,3 +9,5 @@ dist
 *.log
 coverage
 .vercel
+.claude/
+tsconfig.tsbuildinfo
