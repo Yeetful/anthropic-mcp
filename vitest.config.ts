@@ -15,6 +15,7 @@ export default defineConfig({
     include: ["tests/**/*.test.ts"],
     globals: false,
     testTimeout: 20_000,
+    setupFiles: ["./tests/setup.ts"],
     server: {
       deps: {
         inline: ["x402-next", "x402", "next"],

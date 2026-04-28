@@ -16,7 +16,7 @@ describe("x402 payment gate", () => {
       headers: { "content-type": "application/json" },
     });
 
-    const res = await proxy(req, {} as never);
+    const res = await proxy(req);
     expect(res).toBeDefined();
     expect(res!.status).toBe(402);
 

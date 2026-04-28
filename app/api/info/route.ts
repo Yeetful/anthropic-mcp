@@ -11,6 +11,15 @@ export async function GET() {
       payTo: config.paymentAddress,
       protocol: "x402",
       asset: "USDC",
+      facilitator:
+        config.cdpApiKeyId && config.cdpApiKeySecret
+          ? "coinbase-cdp"
+          : "x402.org-public",
+      // Whether this deployment is wired up to be indexed by Bazaar /
+      // agent.market. Requires CDP creds + base mainnet.
+      bazaarIndexable:
+        Boolean(config.cdpApiKeyId && config.cdpApiKeySecret) &&
+        config.network === "base",
     },
     tools: [
       {

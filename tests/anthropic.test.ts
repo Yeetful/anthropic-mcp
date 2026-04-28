@@ -14,7 +14,7 @@ function makeMockClient(response: {
 
 describe("askClaude", () => {
   beforeEach(() => {
-    process.env.ANTHROPIC_DEFAULT_MODEL = "claude-sonnet-4-6";
+    process.env.ANTHROPIC_DEFAULT_MODEL = "claude-haiku-4-5";
   });
 
   it("forwards prompt, system, and model to the SDK", async () => {
@@ -49,7 +49,7 @@ describe("askClaude", () => {
     await askClaude({ prompt: "hi" }, client);
 
     const call = create.mock.calls[0][0];
-    expect(call.model).toBe("claude-sonnet-4-6");
+    expect(call.model).toBe("claude-haiku-4-5");
     expect(call.max_tokens).toBe(1024);
   });
 
