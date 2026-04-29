@@ -21,7 +21,7 @@ import { config as appConfig, priceString } from "@/lib/config";
  */
 const sharedConfig = {
   description:
-    "Anthropic Claude Haiku 4.5 inference over MCP Streamable HTTP. Exposes ask_claude (single-prompt completion) and claude_chat (multi-turn) tools, capped at 256 output tokens per call. Pay-per-call in USDC.",
+    "Yeetful — Anthropic Claude Haiku 4.5 inference over MCP Streamable HTTP, hosted at anthropic.yeetful.com. Exposes ask_claude (single-prompt completion) and claude_chat (multi-turn) tools, capped at 256 output tokens per call. Pay-per-call in USDC on Base. Operated by yeetful.com. Keywords: yeetful, anthropic, claude, haiku, mcp, x402, inference, llm.",
   mimeType: "application/json",
   maxTimeoutSeconds: 60,
   discoverable: true,
