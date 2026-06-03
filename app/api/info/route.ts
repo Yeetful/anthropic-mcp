@@ -16,10 +16,10 @@ export async function GET() {
           ? "coinbase-cdp"
           : "x402.org-public",
       // Whether this deployment is wired up to be indexed by Bazaar /
-      // agent.market. Requires CDP creds + base mainnet.
+      // agent.market. Requires CDP creds + Base mainnet (CAIP-2 eip155:8453).
       bazaarIndexable:
         Boolean(config.cdpApiKeyId && config.cdpApiKeySecret) &&
-        config.network === "base",
+        config.network === "eip155:8453",
     },
     tools: [
       {

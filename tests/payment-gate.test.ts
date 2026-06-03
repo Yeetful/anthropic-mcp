@@ -3,12 +3,15 @@ import { NextRequest } from "next/server";
 
 beforeAll(() => {
   process.env.PAYMENT_ADDRESS = "0x66268791B55e1F5fA585D990326519F101407257";
-  process.env.X402_NETWORK = "base";
+  // base-sepolia (eip155:84532) so the public x402.org facilitator advertises
+  // support for the exact scheme — the v2 proxy needs that to emit the
+  // challenge. The envelope shape is identical to mainnet.
+  process.env.X402_NETWORK = "base-sepolia";
   process.env.X402_PRICE_USD = "0.01";
 });
 
-describe("x402 payment gate", () => {
-  it("returns HTTP 402 with payment requirements when no X-PAYMENT header is sent", async () => {
+describe("x402 payment gate (v2)", () => {
+  it("returns HTTP 402 with a v2 PAYMENT-REQUIRED header challenge", async () => {
     const { proxy } = await import("@/proxy");
 
     const req = new NextRequest("https://example.test/api/mcp/mcp", {
@@ -20,18 +23,27 @@ describe("x402 payment gate", () => {
     expect(res).toBeDefined();
     expect(res!.status).toBe(402);
 
-    const body = await res!.json();
-    expect(body).toHaveProperty("x402Version");
-    expect(Array.isArray(body.accepts)).toBe(true);
-    expect(body.accepts.length).toBeGreaterThan(0);
+    // v2 delivers the challenge in a base64 PAYMENT-REQUIRED response header.
+    const header = res!.headers.get("PAYMENT-REQUIRED");
+    expect(header).toBeTruthy();
+    const challenge = JSON.parse(Buffer.from(header!, "base64").toString("utf8"));
 
-    const accept = body.accepts[0];
-    expect(accept.network).toBe("base");
+    expect(challenge.x402Version).toBe(2);
+    expect(challenge.resource?.url).toBeTruthy();
+    expect(challenge.resource?.mimeType).toBe("application/json");
+
+    const accept = challenge.accepts[0];
+    expect(accept.scheme).toBe("exact");
+    expect(accept.network).toBe("eip155:84532");
     expect(accept.payTo.toLowerCase()).toBe(
       "0x66268791B55e1F5fA585D990326519F101407257".toLowerCase(),
     );
-    // 0.01 USDC = 10000 atomic units (USDC has 6 decimals)
-    expect(accept.maxAmountRequired).toBe("10000");
+    // 0.01 USDC = 10000 atomic units (USDC has 6 decimals). v2 uses `amount`.
+    expect(accept.amount).toBe("10000");
+
+    // Bazaar discovery extension is present at the top level.
+    expect(challenge.extensions?.bazaar?.info).toBeTruthy();
+    expect(challenge.extensions?.bazaar?.schema).toBeTruthy();
   });
 
   it("publishes payment details on the public /api/info endpoint", async () => {
@@ -39,7 +51,7 @@ describe("x402 payment gate", () => {
     const res = await GET();
     const body = await res.json();
 
-    expect(body.payment.network).toBe("base");
+    expect(body.payment.network).toBe("eip155:84532");
     expect(body.payment.payTo).toBe(
       "0x66268791B55e1F5fA585D990326519F101407257",
     );

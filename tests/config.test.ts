@@ -22,11 +22,11 @@ describe("config", () => {
     await expect(loadConfig()).rejects.toThrow(/PAYMENT_ADDRESS/);
   });
 
-  it("defaults to Base mainnet when X402_NETWORK is unset", async () => {
+  it("defaults to Base mainnet (CAIP-2 eip155:8453) when X402_NETWORK is unset", async () => {
     process.env.PAYMENT_ADDRESS = TEST_WALLET;
     const mod = await loadConfig();
     expect(mod.config.paymentAddress).toBe(TEST_WALLET);
-    expect(mod.config.network).toBe("base");
+    expect(mod.config.network).toBe("eip155:8453");
   });
 
   it("formats the price as an x402 USD string", async () => {
