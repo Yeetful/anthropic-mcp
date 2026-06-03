@@ -1,106 +1,121 @@
-import { paymentMiddleware, type RoutesConfig } from "x402-next";
+import { paymentProxy, x402ResourceServer } from "@x402/next";
+import { HTTPFacilitatorClient } from "@x402/core/server";
+import { ExactEvmScheme } from "@x402/evm/exact/server";
 import { facilitator as cdpFacilitator } from "@coinbase/x402";
 import { config as appConfig, priceString } from "@/lib/config";
 
 /**
- * x402 payment gating for the MCP endpoint.
+ * x402 **v2** payment gating for the MCP endpoint (migrated off x402-next v1,
+ * which only spoke v2's predecessor and failed agentic.market / Bazaar
+ * discovery validation).
  *
- * `discoverable: true` opts each route into Coinbase's Bazaar discovery layer,
- * which is what surfaces the agent on agent.market. Bazaar only indexes
- * services settled through the CDP facilitator on Base mainnet.
+ * v2 emits: x402Version 2, a top-level `resource` object, `amount` (not
+ * `maxAmountRequired`), the challenge in a base64 `PAYMENT-REQUIRED` response
+ * header, and — because the route declares `extensions.bazaar` — a top-level
+ * `extensions.bazaar` discovery block.
  *
- * The CDP `facilitator` import reads CDP_API_KEY_ID and CDP_API_KEY_SECRET
- * from env at request time. In tests / local dev without those creds, fall
- * back to the public x402.org facilitator (testnet-only, NOT indexed by
- * Bazaar).
- *
- * `inputSchema` and `outputSchema` describe the MCP JSON-RPC envelope so
- * Bazaar / agent.market can render a richer listing. They reflect the
- * locked-down tool surface — neither `model` nor `max_tokens` is accepted
- * from clients (server enforces Haiku 4.5 + 256 output tokens).
+ * Bazaar only indexes services settled through the CDP facilitator on Base
+ * mainnet, so we use `@coinbase/x402`'s `facilitator` (reads CDP_API_KEY_ID /
+ * CDP_API_KEY_SECRET) when configured, and fall back to the public x402.org
+ * facilitator (testnet, not indexed) for local dev.
  */
-const sharedConfig = {
-  description:
-    "Yeetful — Anthropic Claude Haiku 4.5 inference over MCP Streamable HTTP, hosted at anthropic.yeetful.com. Exposes ask_claude (single-prompt completion) and claude_chat (multi-turn) tools, capped at 256 output tokens per call. Pay-per-call in USDC on Base. Operated by yeetful.com. Keywords: yeetful, anthropic, claude, haiku, mcp, x402, inference, llm.",
-  mimeType: "application/json",
-  maxTimeoutSeconds: 60,
-  discoverable: true,
-  inputSchema: {
-    bodyType: "json",
-    bodyFields: {
-      jsonrpc: { type: "string", const: "2.0" },
-      id: { type: ["string", "number"] },
-      method: {
-        type: "string",
-        enum: ["initialize", "tools/list", "tools/call"],
-        description: "MCP JSON-RPC method.",
+
+const description =
+  "Yeetful — Anthropic Claude Haiku 4.5 inference over MCP Streamable HTTP, hosted at anthropic.yeetful.com. Exposes ask_claude (single-prompt completion) and claude_chat (multi-turn) tools, capped at 256 output tokens per call. Pay-per-call in USDC on Base. Operated by yeetful.com. Keywords: yeetful, anthropic, claude, haiku, mcp, x402, inference, llm.";
+
+// Bazaar discovery block (top-level extensions.bazaar). `info` summarizes how an
+// agent calls the endpoint + an example output; `schema` is the JSON Schema for
+// the MCP JSON-RPC envelope. Model + max_tokens are server-controlled.
+// `info` is a concrete example pair; `schema` describes the shape of `info`
+// (the HTTP-invocation envelope), and the middleware validates info against it —
+// so the two must agree. The rich MCP semantics live in `description`.
+const bazaar = {
+  info: {
+    input: {
+      type: "http",
+      method: "POST",
+      bodyType: "json",
+      body: {
+        jsonrpc: "2.0",
+        id: 1,
+        method: "tools/call",
+        params: { name: "ask_claude", arguments: { prompt: "What is the capital of France?" } },
       },
-      params: {
-        type: "object",
-        description:
-          "For tools/call: { name: 'ask_claude' | 'claude_chat', arguments: {...} }. ask_claude takes { prompt, system? }. claude_chat takes { messages: [{role: 'user'|'assistant', content}], system? }. Model and max_tokens are server-controlled and not accepted from the client.",
+    },
+    output: {
+      type: "json",
+      example: {
+        jsonrpc: "2.0",
+        id: 1,
+        result: { content: [{ type: "text", text: "The capital of France is Paris." }] },
       },
     },
   },
-  outputSchema: {
+  schema: {
+    $schema: "https://json-schema.org/draft/2020-12/schema",
     type: "object",
-    description:
-      "MCP JSON-RPC 2.0 response. On tools/call success, result.content is an array of { type: 'text', text: string } blocks containing Claude's reply (≤256 output tokens).",
     properties: {
-      jsonrpc: { type: "string", const: "2.0" },
-      id: { type: ["string", "number"] },
-      result: {
+      input: {
         type: "object",
         properties: {
-          content: {
-            type: "array",
-            items: {
-              type: "object",
-              properties: {
-                type: { type: "string", enum: ["text"] },
-                text: { type: "string" },
-              },
-              required: ["type", "text"],
-            },
+          type: { type: "string", const: "http" },
+          method: { type: "string", enum: ["POST"] },
+          bodyType: { type: "string", const: "json" },
+          body: {
+            type: "object",
+            description:
+              "MCP JSON-RPC 2.0 request. tools/call uses params { name: 'ask_claude' | 'claude_chat', arguments }. ask_claude takes { prompt, system? }; claude_chat takes { messages: [{role,content}], system? }. model + max_tokens are server-controlled.",
           },
         },
+        required: ["type", "method"],
+        additionalProperties: true,
       },
-      error: {
+      output: {
         type: "object",
         properties: {
-          code: { type: "number" },
-          message: { type: "string" },
+          type: { type: "string", const: "json" },
+          example: { type: "object", additionalProperties: true },
         },
+        required: ["type"],
+        additionalProperties: true,
       },
     },
+    required: ["input"],
   },
 } as const;
 
-const routes: RoutesConfig = {
-  "/api/mcp": {
-    price: priceString(),
-    network: appConfig.network,
-    config: sharedConfig,
-  },
-  "/api/mcp/*": {
-    price: priceString(),
-    network: appConfig.network,
-    config: sharedConfig,
+const routes = {
+  // Named param (matches the Next [transport] segment) → cleaner Bazaar
+  // discovery metadata than a bare wildcard.
+  "/api/mcp/:transport": {
+    accepts: {
+      scheme: "exact",
+      price: priceString(),
+      network: appConfig.network,
+      payTo: appConfig.paymentAddress,
+      maxTimeoutSeconds: 60,
+    },
+    description,
+    mimeType: "application/json",
+    extensions: { bazaar },
   },
 };
 
-const facilitator = appConfig.cdpApiKeyId && appConfig.cdpApiKeySecret
-  ? cdpFacilitator
-  : undefined;
-
-export const proxy = paymentMiddleware(
-  appConfig.paymentAddress,
-  routes,
-  facilitator,
+const cdpReady = !!appConfig.cdpApiKeyId && !!appConfig.cdpApiKeySecret;
+const facilitatorClient = new HTTPFacilitatorClient(
+  cdpReady ? cdpFacilitator : { url: "https://x402.org/facilitator" },
 );
 
-// Limit proxy execution to the MCP transport routes so the homepage,
-// /api/info, and other public surfaces remain free.
+const server = new x402ResourceServer(facilitatorClient).register(
+  appConfig.network,
+  new ExactEvmScheme(),
+);
+
+// syncFacilitatorOnStart=true (default): v2 fetches the facilitator's supported
+// kinds via initialize() before it can emit the challenge for exact/<network>.
+export const proxy = paymentProxy(routes, server);
+
+// Gate only the MCP transport routes; homepage and /api/info stay free.
 export const config = {
   matcher: ["/api/mcp/:path*"],
 };

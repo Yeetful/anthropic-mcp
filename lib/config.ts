@@ -1,4 +1,14 @@
-import type { Network } from "x402-next";
+import type { Network } from "@x402/core/types";
+
+// x402 v2 uses CAIP-2 network ids. Map legacy v1 names for back-compat so an
+// existing X402_NETWORK=base / base-sepolia keeps working.
+function toCaip2(n: string): Network {
+  const map: Record<string, string> = {
+    base: "eip155:8453",
+    "base-sepolia": "eip155:84532",
+  };
+  return (map[n] ?? n) as Network;
+}
 
 function required(name: string): string {
   const value = process.env[name];
@@ -17,7 +27,7 @@ export const config = {
   // No fallback address — fail loudly if PAYMENT_ADDRESS isn't set so
   // misconfigured deploys don't silently route USDC to someone else's wallet.
   paymentAddress: required("PAYMENT_ADDRESS") as `0x${string}`,
-  network: (process.env.X402_NETWORK ?? "base") as Network,
+  network: toCaip2(process.env.X402_NETWORK ?? "base"),
   priceUsd: process.env.X402_PRICE_USD ?? "0.01",
   // CDP credentials are read directly by `@coinbase/x402`'s `facilitator` export
   // from process.env.CDP_API_KEY_ID / CDP_API_KEY_SECRET — exposed here only

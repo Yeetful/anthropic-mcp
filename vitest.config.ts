@@ -8,7 +8,7 @@ export default defineConfig({
     },
   },
   ssr: {
-    noExternal: ["x402-next", "x402"],
+    noExternal: ["@x402/next", "@x402/core", "@x402/evm", "@coinbase/x402"],
   },
   test: {
     environment: "node",
@@ -18,7 +18,9 @@ export default defineConfig({
     setupFiles: ["./tests/setup.ts"],
     server: {
       deps: {
-        inline: ["x402-next", "x402", "next"],
+        // Inline the x402 v2 packages (and next) so vitest transforms them and
+        // can resolve subpath imports like `next/server`.
+        inline: ["@x402/next", "@x402/core", "@x402/evm", "@coinbase/x402", "next"],
       },
     },
   },
