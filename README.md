@@ -31,7 +31,7 @@ npm run dev
 Defaults:
 - Receiving wallet: `0x66268791B55e1F5fA585D990326519F101407257`
 - Network: `base` (mainnet). Set `X402_NETWORK=base-sepolia` for test USDC.
-- Price: `$0.01` per inference call. Override with `X402_PRICE_USD`.
+- Price: `$0.005` per inference call. Override with `X402_PRICE_USD`.
 - Default model: `claude-sonnet-4-6`. Override with `ANTHROPIC_DEFAULT_MODEL`.
 
 ### Facilitator

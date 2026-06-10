@@ -21,14 +21,16 @@ function required(name: string): string {
 export const config = {
   anthropicApiKey: () => required("ANTHROPIC_API_KEY"),
   // Default to Haiku 4.5 — its per-token cost (~$1 in / $5 out per million)
-  // is what makes a $0.01 flat charge sustainable. Switching to Sonnet or
-  // Opus without raising the price will lose money on every call.
+  // is what makes a half-cent flat charge sustainable: worst case is
+  // ~$0.0063/call (5K-token input cap $0.005 + 256-token output cap $0.0013),
+  // typical chat-sized calls run $0.002–0.003. Switching to Sonnet or Opus
+  // without raising the price will lose money on every call.
   defaultModel: process.env.ANTHROPIC_DEFAULT_MODEL ?? "claude-haiku-4-5",
   // No fallback address — fail loudly if PAYMENT_ADDRESS isn't set so
   // misconfigured deploys don't silently route USDC to someone else's wallet.
   paymentAddress: required("PAYMENT_ADDRESS") as `0x${string}`,
   network: toCaip2(process.env.X402_NETWORK ?? "base"),
-  priceUsd: process.env.X402_PRICE_USD ?? "0.01",
+  priceUsd: process.env.X402_PRICE_USD ?? "0.005",
   // CDP credentials are read directly by `@coinbase/x402`'s `facilitator` export
   // from process.env.CDP_API_KEY_ID / CDP_API_KEY_SECRET — exposed here only
   // for validation / debug surfaces.

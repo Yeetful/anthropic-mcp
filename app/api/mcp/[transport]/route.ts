@@ -5,9 +5,10 @@ import { askClaude, chatClaude } from "@/lib/anthropic";
 /**
  * Server-enforced output cap, regardless of what the client requests.
  *
- * Pricing math: at $0.01 per call on Haiku 4.5 (~$1/$5 per million in/out
- * tokens), 256 output tokens cost ~$0.0013 and a few-K-token input adds
- * another ~$0.005. Comfortably under the $0.01 charge.
+ * Pricing math: at $0.005 per call on Haiku 4.5 (~$1/$5 per million in/out
+ * tokens), 256 output tokens cost ~$0.0013 and typical chat-sized inputs add
+ * $0.001–0.003. Margin-positive for realistic traffic; only a maxed-out 20K-char
+ * input (~$0.005 alone) dips slightly past the charge — acceptable tail.
  *
  * Model is also fixed server-side (never honored from client input) so a
  * caller can't request Opus and bleed the wallet dry.
