@@ -41,9 +41,17 @@ describe("x402 payment gate (v2)", () => {
     // 0.01 USDC = 10000 atomic units (USDC has 6 decimals). v2 uses `amount`.
     expect(accept.amount).toBe("10000");
 
-    // Bazaar discovery extension is present at the top level.
-    expect(challenge.extensions?.bazaar?.info).toBeTruthy();
-    expect(challenge.extensions?.bazaar?.schema).toBeTruthy();
+    // Bazaar discovery extension is present at the top level, in the CANONICAL
+    // MCP shape — the indexer rejects anything else (it rendered our old
+    // hand-rolled http-shaped block as `{}` / "input schema present: no").
+    const bazaar = challenge.extensions?.bazaar;
+    expect(bazaar?.info).toBeTruthy();
+    expect(bazaar?.schema).toBeTruthy();
+    expect(bazaar.info.input.type).toBe("mcp");
+    expect(bazaar.info.input.toolName).toBe("ask_claude");
+    // The field the Bazaar "INPUT SCHEMA PRESENT" quality signal checks:
+    expect(bazaar.info.input.inputSchema?.properties?.prompt).toBeTruthy();
+    expect(bazaar.info.input.inputSchema?.required).toContain("prompt");
   });
 
   it("publishes payment details on the public /api/info endpoint", async () => {

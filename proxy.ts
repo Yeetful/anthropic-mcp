@@ -2,6 +2,10 @@ import { paymentProxy, x402ResourceServer } from "@x402/next";
 import { HTTPFacilitatorClient } from "@x402/core/server";
 import { ExactEvmScheme } from "@x402/evm/exact/server";
 import { facilitator as cdpFacilitator } from "@coinbase/x402";
+import {
+  declareDiscoveryExtension,
+  bazaarResourceServerExtension,
+} from "@x402/extensions/bazaar";
 import { config as appConfig, priceString } from "@/lib/config";
 
 /**
@@ -23,66 +27,41 @@ import { config as appConfig, priceString } from "@/lib/config";
 const description =
   "Yeetful — Anthropic Claude Haiku 4.5 inference over MCP Streamable HTTP, hosted at anthropic.yeetful.com. Exposes ask_claude (single-prompt completion) and claude_chat (multi-turn) tools, capped at 256 output tokens per call. Pay-per-call in USDC on Base. Operated by yeetful.com. Keywords: yeetful, anthropic, claude, haiku, mcp, x402, inference, llm.";
 
-// Bazaar discovery block (top-level extensions.bazaar). `info` summarizes how an
-// agent calls the endpoint + an example output; `schema` is the JSON Schema for
-// the MCP JSON-RPC envelope. Model + max_tokens are server-controlled.
-// `info` is a concrete example pair; `schema` describes the shape of `info`
-// (the HTTP-invocation envelope), and the middleware validates info against it —
-// so the two must agree. The rich MCP semantics live in `description`.
-const bazaar = {
-  info: {
-    input: {
-      type: "http",
-      method: "POST",
-      bodyType: "json",
-      body: {
-        jsonrpc: "2.0",
-        id: 1,
-        method: "tools/call",
-        params: { name: "ask_claude", arguments: { prompt: "What is the capital of France?" } },
-      },
-    },
-    output: {
-      type: "json",
-      example: {
-        jsonrpc: "2.0",
-        id: 1,
-        result: { content: [{ type: "text", text: "The capital of France is Paris." }] },
-      },
-    },
-  },
-  schema: {
-    $schema: "https://json-schema.org/draft/2020-12/schema",
+// Bazaar discovery block — built with the SDK's canonical MCP shape
+// (declareDiscoveryExtension → { bazaar: { info: { input: { type: "mcp",
+// toolName, inputSchema, … } }, schema } }).
+//
+// The previous hand-rolled version used the HTTP/body discovery shape
+// (type:"http", method, body) for an MCP resource: the Bazaar indexer didn't
+// recognize it, rendered the extension as `{}`, and flagged
+// "INPUT SCHEMA PRESENT: no". `inputSchema` here is the JSON Schema of the
+// TOOL'S arguments — exactly the field the validator checks. One tool per
+// discovery block; ask_claude is the primary surface (claude_chat is
+// described in `description`). Model + max_tokens stay server-controlled.
+// Returns the already-keyed record: { bazaar: { info, schema } }.
+const discovery = declareDiscoveryExtension({
+  toolName: "ask_claude",
+  description:
+    "Single-prompt Claude Haiku 4.5 completion (≤256 output tokens). A multi-turn claude_chat tool is also exposed on the same endpoint. Model and max_tokens are server-controlled.",
+  transport: "streamable-http",
+  inputSchema: {
     type: "object",
     properties: {
-      input: {
-        type: "object",
-        properties: {
-          type: { type: "string", const: "http" },
-          method: { type: "string", enum: ["POST"] },
-          bodyType: { type: "string", const: "json" },
-          body: {
-            type: "object",
-            description:
-              "MCP JSON-RPC 2.0 request. tools/call uses params { name: 'ask_claude' | 'claude_chat', arguments }. ask_claude takes { prompt, system? }; claude_chat takes { messages: [{role,content}], system? }. model + max_tokens are server-controlled.",
-          },
-        },
-        required: ["type", "method"],
-        additionalProperties: true,
-      },
-      output: {
-        type: "object",
-        properties: {
-          type: { type: "string", const: "json" },
-          example: { type: "object", additionalProperties: true },
-        },
-        required: ["type"],
-        additionalProperties: true,
-      },
+      prompt: { type: "string", description: "The user prompt to complete." },
+      system: { type: "string", description: "Optional system prompt." },
     },
-    required: ["input"],
+    required: ["prompt"],
+    additionalProperties: false,
   },
-} as const;
+  example: { prompt: "What is the capital of France?" },
+  output: {
+    example: {
+      jsonrpc: "2.0",
+      id: 1,
+      result: { content: [{ type: "text", text: "The capital of France is Paris." }] },
+    },
+  },
+});
 
 const routes = {
   // Named param (matches the Next [transport] segment) → cleaner Bazaar
@@ -97,7 +76,7 @@ const routes = {
     },
     description,
     mimeType: "application/json",
-    extensions: { bazaar },
+    extensions: discovery,
   },
 };
 
@@ -106,10 +85,11 @@ const facilitatorClient = new HTTPFacilitatorClient(
   cdpReady ? cdpFacilitator : { url: "https://x402.org/facilitator" },
 );
 
-const server = new x402ResourceServer(facilitatorClient).register(
-  appConfig.network,
-  new ExactEvmScheme(),
-);
+const server = new x402ResourceServer(facilitatorClient)
+  .register(appConfig.network, new ExactEvmScheme())
+  // Processes + validates the bazaar discovery payload on the way out — without
+  // this the extension may be emitted unrecognized (or stripped to `{}`).
+  .registerExtension(bazaarResourceServerExtension);
 
 // syncFacilitatorOnStart=true (default): v2 fetches the facilitator's supported
 // kinds via initialize() before it can emit the challenge for exact/<network>.
