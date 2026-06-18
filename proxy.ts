@@ -1,3 +1,5 @@
+import { AsyncLocalStorage } from "node:async_hooks";
+import type { NextRequest } from "next/server";
 import { paymentProxy, x402ResourceServer } from "@x402/next";
 import { HTTPFacilitatorClient } from "@x402/core/server";
 import { ExactEvmScheme } from "@x402/evm/exact/server";
@@ -6,6 +8,7 @@ import {
   declareDiscoveryExtension,
   bazaarResourceServerExtension,
 } from "@x402/extensions/bazaar";
+import { reportUsage } from "yeetful/server";
 import { config as appConfig, priceString } from "@/lib/config";
 
 /**
@@ -91,9 +94,55 @@ const server = new x402ResourceServer(facilitatorClient)
   // this the extension may be emitted unrecognized (or stripped to `{}`).
   .registerExtension(bazaarResourceServerExtension);
 
+/* ─────────────────────────  Yeetful earn-tracking  ─────────────────────────
+ * Report every settled payment to your Yeetful dashboard so earnings show up.
+ * Active only when both YEETFUL_API_KEY and YEETFUL_MCP_SLUG are set.
+ *
+ * CORE: one `onAfterSettle` hook + one fire-and-forget `reportUsage(...)`.
+ * `reportUsage` never throws, self-times-out, and is never awaited — so
+ * telemetry can't slow, block, or break a settlement.
+ * ───────────────────────────────────────────────────────────────────────── */
+const earnTrackingEnabled = !!appConfig.yeetfulApiKey && !!appConfig.yeetfulMcpSlug;
+
+if (earnTrackingEnabled) {
+  server.onAfterSettle(async ({ result }) => {
+    reportUsage({
+      apiKey: appConfig.yeetfulApiKey!,
+      mcp: appConfig.yeetfulMcpSlug!,
+      amountUsd: Number(appConfig.priceUsd), // your list price, in USD
+      payer: result.payer, // paying agent's wallet
+      txHash: result.transaction,
+      network: appConfig.networkName,
+      tool: await currentTool(), // optional — see below; resolves instantly
+    });
+  });
+}
+
+/* OPTIONAL: per-tool breakdown ──────────────────────────────────────────────
+ * The MCP tool name (`params.name`) is in the JSON-RPC body, which the settle
+ * hook doesn't receive — and the handler consumes the original body, so we
+ * must NOT read it. Instead we parse a CLONE at proxy entry and pass the
+ * already-pending promise through AsyncLocalStorage to the hook. Drop this
+ * whole block (and the `tool` line above) if you don't want per-tool data. */
+const toolNameStore = new AsyncLocalStorage<Promise<string | undefined>>();
+const currentTool = () => toolNameStore.getStore() ?? Promise.resolve(undefined);
+
+async function extractTool(req: NextRequest): Promise<string | undefined> {
+  try {
+    const body = (await req.clone().json()) as { params?: { name?: unknown } };
+    return typeof body?.params?.name === "string" ? body.params.name : undefined;
+  } catch {
+    return undefined; // no/invalid JSON body (e.g. the 402 probe) — fine.
+  }
+}
+
 // syncFacilitatorOnStart=true (default): v2 fetches the facilitator's supported
 // kinds via initialize() before it can emit the challenge for exact/<network>.
-export const proxy = paymentProxy(routes, server);
+const paymentGate = paymentProxy(routes, server);
+
+export const proxy = earnTrackingEnabled
+  ? (req: NextRequest) => toolNameStore.run(extractTool(req), () => paymentGate(req))
+  : paymentGate;
 
 // Gate only the MCP transport routes; homepage and /api/info stay free.
 export const config = {
