@@ -30,7 +30,16 @@ export const config = {
   // misconfigured deploys don't silently route USDC to someone else's wallet.
   paymentAddress: required("PAYMENT_ADDRESS") as `0x${string}`,
   network: toCaip2(process.env.X402_NETWORK ?? "base"),
+  // Human-readable network name (e.g. "base"). The CAIP-2 `network` above is
+  // what x402 puts on the wire; this is the human name Yeetful earn-tracking
+  // wants for `reportUsage({ network })`.
+  networkName: process.env.X402_NETWORK ?? "base",
   priceUsd: process.env.X402_PRICE_USD ?? "0.005",
+  // Yeetful earn-tracking (optional): when BOTH are set, every settled payment
+  // is reported to your Yeetful dashboard so earnings show up. Unset = the
+  // server still runs, just un-tracked.
+  yeetfulApiKey: process.env.YEETFUL_API_KEY,
+  yeetfulMcpSlug: process.env.YEETFUL_MCP_SLUG,
   // CDP credentials are read directly by `@coinbase/x402`'s `facilitator` export
   // from process.env.CDP_API_KEY_ID / CDP_API_KEY_SECRET — exposed here only
   // for validation / debug surfaces.
